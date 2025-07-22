@@ -4,9 +4,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from routes import auth, accounts, transactions  # Add transactions import
 from dotenv import load_dotenv
 import uvicorn
+import create_indexes
 
 # Load environment variables
 load_dotenv()
+
+if os.getenv("CREATE_DB_INDEXES", "false").lower() == "true":
+    try:
+        create_indexes.create_indexes()
+        print("✅ Database indexes ensured.")
+    except Exception as e:
+        print(f"❌ Error ensuring database indexes: {e}")
 
 app = FastAPI(
     title="Finance Tracker API", 
