@@ -5,7 +5,7 @@ import '../models/transaction_model.dart';
 import 'auth_service.dart';
 
 class TransactionService {
-  static const String baseUrl = 'http://10.80.21.130:8000'; // Ensure this is correct
+  static const String baseUrl = 'https://menmy.onrender.com'; // Ensure this is correct
 
   static Future<Map<String, dynamic>> createTransaction({
     required String type,

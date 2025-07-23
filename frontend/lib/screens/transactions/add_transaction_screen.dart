@@ -138,7 +138,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Add Transaction${_transactions.length > 1 ? 's' : ''}'),
-        backgroundColor: Colors.green.shade700,
+        backgroundColor: Colors.blue.shade700,
         foregroundColor: Colors.white,
         actions: [
           Consumer<TransactionProvider>(
@@ -255,7 +255,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                                       : _submitTransactions,
                                   style: ElevatedButton.styleFrom(
                                     padding: const EdgeInsets.symmetric(vertical: 16),
-                                    backgroundColor: Colors.green.shade700,
+                                    backgroundColor: Colors.blue.shade700,
                                     foregroundColor: Colors.white,
                                   ),
                                   child: transactionProvider.isLoading

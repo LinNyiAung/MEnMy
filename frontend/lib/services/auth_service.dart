@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
 
 class AuthService {
-  static const String baseUrl = 'http://10.80.21.130:8000'; // Change this to your API URL
+  static const String baseUrl = 'https://menmy.onrender.com'; // Change this to your API URL
   
   static Future<Map<String, dynamic>> signUp({
     required String fullName,
