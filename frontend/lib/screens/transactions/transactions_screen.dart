@@ -1,5 +1,6 @@
 // screens/transactions/transactions_screen.dart
 import 'package:flutter/material.dart';
+import 'package:frontend/screens/transactions/edit_transaction_screen.dart';
 import 'package:provider/provider.dart';
 import '../../providers/transaction_provider.dart';
 import '../../providers/account_provider.dart';
@@ -33,6 +34,25 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       // Load all transactions initially
       transactionProvider.loadTransactions();
     });
+  }
+
+  void _editTransaction(Transaction transaction) async {
+    final result = await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => EditTransactionScreen(transaction: transaction),
+      ),
+    );
+
+    if (result == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Transaction updated successfully!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      // Reload transactions to reflect the changes
+      _applyFilters();
+    }
   }
 
   // Method to trigger loading based on current filters
@@ -335,6 +355,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                       transaction: transaction,
                       accounts: accountProvider.accounts,
                       onDelete: () => _deleteTransaction(transaction),
+                      onEdit: () => _editTransaction(transaction),
                     );
                   },
                 ),
@@ -445,12 +466,14 @@ class TransactionCard extends StatelessWidget {
   final Transaction transaction;
   final List<Account> accounts;
   final VoidCallback onDelete;
+  final VoidCallback onEdit; // Add onEdit callback
 
   const TransactionCard({
     Key? key,
     required this.transaction,
     required this.accounts,
     required this.onDelete,
+    required this.onEdit, // Add this parameter
   }) : super(key: key);
 
   @override
@@ -458,29 +481,29 @@ class TransactionCard extends StatelessWidget {
     final isInflow = transaction.type == TransactionTypes.inflow;
     final fromAccount = transaction.fromAccountId != null
         ? accounts.firstWhere(
-          (acc) => acc.id == transaction.fromAccountId,
-      orElse: () => Account(
-        id: '',
-        name: 'Unknown Account',
-        accountType: '',
-        userId: '',
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      ),
-    )
+            (acc) => acc.id == transaction.fromAccountId,
+            orElse: () => Account(
+              id: '',
+              name: 'Unknown Account',
+              accountType: '',
+              userId: '',
+              createdAt: DateTime.now(),
+              updatedAt: DateTime.now(),
+            ),
+          )
         : null;
     final toAccount = transaction.toAccountId != null
         ? accounts.firstWhere(
-          (acc) => acc.id == transaction.toAccountId,
-      orElse: () => Account(
-        id: '',
-        name: 'Unknown Account',
-        accountType: '',
-        userId: '',
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      ),
-    )
+            (acc) => acc.id == transaction.toAccountId,
+            orElse: () => Account(
+              id: '',
+              name: 'Unknown Account',
+              accountType: '',
+              userId: '',
+              createdAt: DateTime.now(),
+              updatedAt: DateTime.now(),
+            ),
+          )
         : null;
 
     return Card(
@@ -545,11 +568,23 @@ class TransactionCard extends StatelessWidget {
                 ),
                 PopupMenuButton<String>(
                   onSelected: (value) {
-                    if (value == 'delete') {
+                    if (value == 'edit') {
+                      onEdit(); // Call the edit callback
+                    } else if (value == 'delete') {
                       onDelete();
                     }
                   },
                   itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'edit',
+                      child: Row(
+                        children: [
+                          Icon(Icons.edit, color: Colors.blue),
+                          SizedBox(width: 8),
+                          Text('Edit'),
+                        ],
+                      ),
+                    ),
                     const PopupMenuItem(
                       value: 'delete',
                       child: Row(

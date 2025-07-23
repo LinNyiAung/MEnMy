@@ -4,7 +4,7 @@ import '../models/account_model.dart';
 import 'auth_service.dart';
 
 class AccountService {
-  static const String baseUrl = 'https://menmy.onrender.com';
+  static const String baseUrl = 'http://10.80.21.130:8000';
 
   static Future<Map<String, dynamic>> createAccount({
     required String name,

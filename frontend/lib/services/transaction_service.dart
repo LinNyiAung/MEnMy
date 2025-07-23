@@ -5,7 +5,7 @@ import '../models/transaction_model.dart';
 import 'auth_service.dart';
 
 class TransactionService {
-  static const String baseUrl = 'https://menmy.onrender.com'; // Ensure this is correct
+  static const String baseUrl = 'http://10.80.21.130:8000'; // Ensure this is correct
 
   static Future<Map<String, dynamic>> createTransaction({
     required String type,
@@ -168,6 +168,61 @@ class TransactionService {
         return {
           'success': false,
           'message': responseData['detail'] as String? ?? 'Failed to fetch transactions',
+        };
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+  }
+
+
+    static Future<Map<String, dynamic>> updateTransaction({
+    required String transactionId,
+    required String type,
+    required double amount,
+    String? fromAccountId,
+    String? toAccountId,
+    required String detail,
+    String? documentRecord,
+    DateTime? transactionDate,
+  }) async {
+    try {
+      final token = await AuthService.getToken();
+      if (token == null) {
+        return {'success': false, 'message': 'No authentication token found'};
+      }
+
+      final updateRequest = UpdateTransactionRequest(
+        type: type,
+        amount: amount,
+        fromAccountId: fromAccountId,
+        toAccountId: toAccountId,
+        detail: detail,
+        documentRecord: documentRecord,
+        transactionDate: transactionDate,
+      );
+
+      final response = await http.put(
+        Uri.parse('$baseUrl/transactions/$transactionId'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: json.encode(updateRequest.toJson()),
+      );
+
+      final responseData = json.decode(response.body);
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'transaction': Transaction.fromJson(responseData['transaction']),
+          'message': responseData['message'] as String? ?? 'Transaction updated',
+        };
+      } else {
+        return {
+          'success': false,
+          'message': responseData['detail'] as String? ?? 'Failed to update transaction',
         };
       }
     } catch (e) {

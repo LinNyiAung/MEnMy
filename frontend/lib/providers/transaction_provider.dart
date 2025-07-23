@@ -98,6 +98,48 @@ class TransactionProvider with ChangeNotifier {
     _setLoading(false);
   }
 
+
+    Future<bool> updateTransaction({
+    required String transactionId,
+    required String type,
+    required double amount,
+    String? fromAccountId,
+    String? toAccountId,
+    required String detail,
+    String? documentRecord,
+    DateTime? transactionDate,
+  }) async {
+    _setLoading(true);
+    _errorMessage = '';
+
+    final result = await TransactionService.updateTransaction(
+      transactionId: transactionId,
+      type: type,
+      amount: amount,
+      fromAccountId: fromAccountId,
+      toAccountId: toAccountId,
+      detail: detail,
+      documentRecord: documentRecord,
+      transactionDate: transactionDate,
+    );
+
+    if (result['success']) {
+      // Update the transaction in the local list
+      final updatedTransaction = result['transaction'] as Transaction;
+      final index = _transactions.indexWhere((t) => t.id == transactionId);
+      if (index != -1) {
+        _transactions[index] = updatedTransaction;
+        notifyListeners();
+      }
+      _setLoading(false);
+      return true;
+    } else {
+      _errorMessage = result['message'];
+      _setLoading(false);
+      return false;
+    }
+  }
+
   Future<bool> deleteTransaction(String transactionId) async {
     _setLoading(true);
     _errorMessage = '';

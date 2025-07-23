@@ -108,6 +108,39 @@ class CreateMultipleTransactionsRequest {
   }
 }
 
+
+class UpdateTransactionRequest {
+  final String? type;
+  final double? amount;
+  final String? fromAccountId;
+  final String? toAccountId;
+  final String? detail;
+  final String? documentRecord;
+  final DateTime? transactionDate;
+
+  UpdateTransactionRequest({
+    this.type,
+    this.amount,
+    this.fromAccountId,
+    this.toAccountId,
+    this.detail,
+    this.documentRecord,
+    this.transactionDate,
+  });
+
+  Map<String, dynamic> toJson() {
+    final map = <String, dynamic>{};
+    if (type != null) map['type'] = type;
+    if (amount != null) map['amount'] = amount;
+    if (fromAccountId != null) map['from_account_id'] = fromAccountId;
+    if (toAccountId != null) map['to_account_id'] = toAccountId;
+    if (detail != null) map['detail'] = detail;
+    if (documentRecord != null) map['document_record'] = documentRecord;
+    if (transactionDate != null) map['transaction_date'] = transactionDate!.toIso8601String();
+    return map;
+  }
+}
+
 class TransactionTypes {
   static const String inflow = 'Inflow';
   static const String outflow = 'Outflow';
