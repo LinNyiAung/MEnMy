@@ -4,13 +4,15 @@ import '../services/auth_service.dart';
 
 class AuthProvider with ChangeNotifier {
   User? _user;
+  String? _token;
   bool _isLoading = false;
   String _errorMessage = '';
 
   User? get user => _user;
+  String? get token => _token;
   bool get isLoading => _isLoading;
   String get errorMessage => _errorMessage;
-  bool get isLoggedIn => _user != null;
+  bool get isLoggedIn => _user != null && _token != null;
 
   void _setLoading(bool loading) {
     _isLoading = loading;
@@ -33,6 +35,7 @@ class AuthProvider with ChangeNotifier {
 
     if (result['success']) {
       _user = result['user'];
+      _token = await AuthService.getToken(); // Get the stored token
       _setLoading(false);
       return true;
     } else {
@@ -56,6 +59,7 @@ class AuthProvider with ChangeNotifier {
 
     if (result['success']) {
       _user = result['user'];
+      _token = await AuthService.getToken(); // Get the stored token
       _setLoading(false);
       return true;
     } else {
@@ -68,6 +72,7 @@ class AuthProvider with ChangeNotifier {
   Future<void> logout() async {
     await AuthService.logout();
     _user = null;
+    _token = null;
     notifyListeners();
   }
 
@@ -75,7 +80,24 @@ class AuthProvider with ChangeNotifier {
     final isLoggedIn = await AuthService.isLoggedIn();
     if (!isLoggedIn) {
       _user = null;
+      _token = null;
+      notifyListeners();
+    } else {
+      // If still logged in, try to get the current token
+      _token = await AuthService.getToken();
       notifyListeners();
     }
+  }
+
+  // Helper method to refresh token if needed
+  Future<void> refreshToken() async {
+    _token = await AuthService.getToken();
+    notifyListeners();
+  }
+
+  // Method to clear error message
+  void clearError() {
+    _errorMessage = '';
+    notifyListeners();
   }
 }

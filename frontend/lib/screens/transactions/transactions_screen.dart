@@ -4,10 +4,12 @@ import 'package:frontend/screens/transactions/edit_transaction_screen.dart';
 import 'package:provider/provider.dart';
 import '../../providers/transaction_provider.dart';
 import '../../providers/account_provider.dart';
+import '../../providers/auth_provider.dart'; // Add this import for auth token
 import '../../models/transaction_model.dart';
 import '../../models/account_model.dart';
 import '../../widgets/app_drawer.dart';
-import 'add_transaction_screen.dart'; // Ensure this import is correct
+import '../../widgets/file_viewer.dart'; // Add this import
+import 'add_transaction_screen.dart';
 
 class TransactionsScreen extends StatefulWidget {
   const TransactionsScreen({Key? key}) : super(key: key);
@@ -17,8 +19,8 @@ class TransactionsScreen extends StatefulWidget {
 }
 
 class _TransactionsScreenState extends State<TransactionsScreen> {
-  String? _selectedFilterValue; // Renamed for clarity, can be accountId or type
-  String? _selectedFilterType; // To differentiate if the filter is for account or type
+  String? _selectedFilterValue;
+  String? _selectedFilterType;
 
   @override
   void initState() {
@@ -27,11 +29,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       final transactionProvider = Provider.of<TransactionProvider>(context, listen: false);
       final accountProvider = Provider.of<AccountProvider>(context, listen: false);
 
-      // Load accounts if not already loaded for the filter dropdown
       if (accountProvider.accounts.isEmpty) {
         accountProvider.loadAccounts();
       }
-      // Load all transactions initially
       transactionProvider.loadTransactions();
     });
   }
@@ -50,26 +50,18 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           backgroundColor: Colors.green,
         ),
       );
-      // Reload transactions to reflect the changes
       _applyFilters();
     }
   }
 
-  // Method to trigger loading based on current filters
   void _applyFilters() {
     final transactionProvider = Provider.of<TransactionProvider>(context, listen: false);
 
     if (_selectedFilterType == 'account') {
       transactionProvider.loadTransactions(accountId: _selectedFilterValue);
     } else if (_selectedFilterType == 'type') {
-      // Note: The backend doesn't currently support type filtering directly in getTransactions.
-      // We'll handle this by filtering locally IF backend doesn't support it.
-      // For now, we assume we might need to adapt the backend or filter locally.
-      // If backend is updated: transactionProvider.loadTransactions(type: _selectedFilterValue);
-      // For now, let's call loadTransactions() to get all, then we'll filter them locally.
       transactionProvider.loadTransactions();
     } else {
-      // No filter or 'All' selected
       transactionProvider.loadTransactions();
     }
   }
@@ -79,7 +71,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Transactions'),
-        backgroundColor: Colors.blue.shade700, // Changed to blue
+        backgroundColor: Colors.blue.shade700,
         foregroundColor: Colors.white,
         actions: [
           PopupMenuButton<String>(
@@ -95,15 +87,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                   _selectedFilterValue = TransactionTypes.inflow;
                   _selectedFilterType = 'type';
                 });
-                _applyFilters(); // Will call loadTransactions() and then filter locally
+                _applyFilters();
               } else if (value == TransactionTypes.outflow) {
                 setState(() {
                   _selectedFilterValue = TransactionTypes.outflow;
                   _selectedFilterType = 'type';
                 });
-                _applyFilters(); // Will call loadTransactions() and then filter locally
+                _applyFilters();
               } else {
-                // Assume it's an account ID
                 setState(() {
                   _selectedFilterValue = value;
                   _selectedFilterType = 'account';
@@ -114,7 +105,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             itemBuilder: (context) {
               final accountProvider = Provider.of<AccountProvider>(context, listen: false);
               return [
-                // Filter by Account
                 const PopupMenuDivider(),
                 const PopupMenuItem<String>(
                   value: 'all_accounts',
@@ -143,12 +133,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                   ),
                 )),
                 const PopupMenuDivider(),
-                // Filter by Type
                 PopupMenuItem<String>(
                   value: TransactionTypes.inflow,
                   child: Row(
                     children: [
-                      const Icon(Icons.arrow_downward, color: Colors.green), // Keep transaction type colors
+                      const Icon(Icons.arrow_downward, color: Colors.green),
                       const SizedBox(width: 8),
                       Text('Inflow (${TransactionTypes.inflow})'),
                     ],
@@ -158,7 +147,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                   value: TransactionTypes.outflow,
                   child: Row(
                     children: [
-                      const Icon(Icons.arrow_upward, color: Colors.red), // Keep transaction type colors
+                      const Icon(Icons.arrow_upward, color: Colors.red),
                       const SizedBox(width: 8),
                       Text('Outflow (${TransactionTypes.outflow})'),
                     ],
@@ -171,11 +160,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         ],
       ),
       drawer: const AppDrawer(currentRoute: 'transactions'),
-      body: Consumer2<TransactionProvider, AccountProvider>(
-        builder: (context, transactionProvider, accountProvider, child) {
+      body: Consumer3<TransactionProvider, AccountProvider, AuthProvider>(
+        builder: (context, transactionProvider, accountProvider, authProvider, child) {
           List<Transaction> filteredTransactions = transactionProvider.transactions;
 
-          // Local filtering for transaction type if backend doesn't support it directly
           if (_selectedFilterType == 'type' && _selectedFilterValue != null) {
             filteredTransactions = filteredTransactions.where((tx) => tx.type == _selectedFilterValue).toList();
           }
@@ -202,7 +190,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(
-                    onPressed: () => _applyFilters(), // Retry with filters
+                    onPressed: () => _applyFilters(),
                     child: const Text('Retry'),
                   ),
                 ],
@@ -210,7 +198,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             );
           }
 
-          // Determine the message for the empty state
           String emptyMessage = 'No transactions yet';
           String emptySubMessage = 'Create your first transaction to get started';
           if (_selectedFilterType == 'account' && _selectedFilterValue != null) {
@@ -259,13 +246,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
           return Column(
             children: [
-              // Summary Card (Only show if no filters applied or only account filter)
               if (_selectedFilterType == null || _selectedFilterType == 'account') ...[
                 Container(
                   margin: const EdgeInsets.all(16),
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    // Changed gradient to blue to match dashboard
                     gradient: LinearGradient(
                       colors: [Colors.blue.shade700, Colors.blue.shade500],
                       begin: Alignment.topLeft,
@@ -287,7 +272,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                               ),
                             ),
                             Text(
-                              '${transactionProvider.totalCount}', // Display total count from provider
+                              '${transactionProvider.totalCount}',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 24,
@@ -307,7 +292,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 ),
               ],
 
-              // Filter indicator
               if (_selectedFilterValue != null) ...[
                 Container(
                   margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -344,7 +328,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 ),
               ],
 
-              // Transactions List
               Expanded(
                 child: ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -354,6 +337,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     return TransactionCard(
                       transaction: transaction,
                       accounts: accountProvider.accounts,
+                      authToken: authProvider.token, // Pass the auth token
                       onDelete: () => _deleteTransaction(transaction),
                       onEdit: () => _editTransaction(transaction),
                     );
@@ -366,7 +350,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _navigateToAddTransaction(),
-        backgroundColor: Colors.blue.shade700, // Changed to blue
+        backgroundColor: Colors.blue.shade700,
         child: const Icon(Icons.add, color: Colors.white),
       ),
     );
@@ -377,7 +361,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       final account = accounts.firstWhere((acc) => acc.id == accountId);
       return account.name;
     } catch (e) {
-      return 'Unknown Account'; // Fallback if account not found
+      return 'Unknown Account';
     }
   }
 
@@ -392,10 +376,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Transaction(s) created successfully!'),
-          backgroundColor: Colors.green, // Green for success
+          backgroundColor: Colors.green,
         ),
       );
-      // Reload transactions to reflect the new entry
       _applyFilters();
     }
   }
@@ -430,10 +413,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Transaction deleted successfully!'),
-            backgroundColor: Colors.green, // Green for success
+            backgroundColor: Colors.green,
           ),
         );
-        _applyFilters(); // Reload transactions after deletion
+        _applyFilters();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -447,7 +430,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     }
   }
 
-  // Helper methods for account type icons (keep as is)
   IconData _getAccountTypeIcon(String type) {
     switch (type) {
       case 'Bank': return Icons.account_balance;
@@ -461,68 +443,72 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   }
 }
 
-// Keep the TransactionCard widget as is from the previous response
 class TransactionCard extends StatelessWidget {
   final Transaction transaction;
   final List<Account> accounts;
+  final String? authToken; // Add auth token parameter
   final VoidCallback onDelete;
-  final VoidCallback onEdit; // Add onEdit callback
+  final VoidCallback onEdit;
 
   const TransactionCard({
     Key? key,
     required this.transaction,
     required this.accounts,
+    required this.authToken, // Add this parameter
     required this.onDelete,
-    required this.onEdit, // Add this parameter
+    required this.onEdit,
   }) : super(key: key);
 
-
   void _showFilesDialog(BuildContext context, List<String> filePaths) {
-  showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Attached Files'),
-      content: Container(
-        width: double.maxFinite,
-        constraints: const BoxConstraints(maxHeight: 300),
-        child: ListView.builder(
-          shrinkWrap: true,
-          itemCount: filePaths.length,
-          itemBuilder: (context, index) {
-            final filePath = filePaths[index];
-            final fileName = filePath.split('_').last; // Extract original filename
-            final isImage = ['jpg', 'jpeg', 'png', 'gif'].contains(
-              fileName.split('.').last.toLowerCase(),
-            );
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Attached Files'),
+        content: Container(
+          width: double.maxFinite,
+          constraints: const BoxConstraints(maxHeight: 300),
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: filePaths.length,
+            itemBuilder: (context, index) {
+              final filePath = filePaths[index];
+              final fileName = filePath.split('_').last;
+              final isImage = ['jpg', 'jpeg', 'png', 'gif'].contains(
+                fileName.split('.').last.toLowerCase(),
+              );
 
-            return ListTile(
-              leading: Icon(
-                isImage ? Icons.image : Icons.insert_drive_file,
-                color: Colors.blue.shade700,
-              ),
-              title: Text(fileName),
-              subtitle: Text('Tap to download'),
-              onTap: () {
-                // You can implement file download/viewing here
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('File download feature coming soon'),
-                  ),
-                );
-              },
-            );
-          },
+              return ListTile(
+                leading: Icon(
+                  isImage ? Icons.image : Icons.insert_drive_file,
+                  color: Colors.blue.shade700,
+                ),
+                title: Text(fileName),
+                subtitle: const Text('Tap to view'),
+                onTap: () {
+                  Navigator.of(context).pop(); // Close dialog first
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => FileViewer(
+                        filePaths: filePaths,
+                        initialIndex: index,
+                        authToken: authToken, // Pass auth token to FileViewer
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
-        ),
-      ],
-    ),
-  );
-}
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -566,7 +552,7 @@ class TransactionCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: isInflow ? Colors.green : Colors.red, // Transaction type colors
+                    color: isInflow ? Colors.green : Colors.red,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
@@ -617,7 +603,7 @@ class TransactionCard extends StatelessWidget {
                 PopupMenuButton<String>(
                   onSelected: (value) {
                     if (value == 'edit') {
-                      onEdit(); // Call the edit callback
+                      onEdit();
                     } else if (value == 'delete') {
                       onDelete();
                     }
