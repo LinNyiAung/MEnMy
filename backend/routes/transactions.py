@@ -1,5 +1,10 @@
-from fastapi import APIRouter, HTTPException, status, Depends, Query
+import os
+from pathlib import Path
+import uuid
+from fastapi import APIRouter, File, HTTPException, UploadFile, status, Depends, Query
 from datetime import datetime
+
+from fastapi.responses import FileResponse
 from models import (
     TransactionCreate, 
     TransactionUpdate, 
@@ -11,9 +16,112 @@ from bson import ObjectId
 from typing import List, Optional
 import logging
 
+# Add this constant after the imports
+UPLOAD_DIR = "uploads/transaction_documents"
+
+# Ensure upload directory exists - add this after the router definition
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
+
+
+@router.post("/upload-files", response_model=dict)
+async def upload_transaction_files(
+    files: List[UploadFile] = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        user_id = str(current_user["_id"])
+        uploaded_files = []
+        
+        # Validate file types and sizes
+        allowed_extensions = {'.pdf', '.jpg', '.jpeg', '.png', '.gif', '.doc', '.docx', '.txt'}
+        max_file_size = 10 * 1024 * 1024  # 10MB
+        
+        for file in files:
+            # Check file extension
+            file_extension = Path(file.filename).suffix.lower()
+            if file_extension not in allowed_extensions:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"File type {file_extension} not allowed. Allowed types: {', '.join(allowed_extensions)}"
+                )
+            
+            # Check file size
+            file_content = await file.read()
+            if len(file_content) > max_file_size:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"File {file.filename} is too large. Maximum size is 10MB"
+                )
+            
+            # Generate unique filename
+            unique_filename = f"{user_id}_{uuid.uuid4().hex}_{file.filename}"
+            file_path = os.path.join(UPLOAD_DIR, unique_filename)
+            
+            # Save file
+            with open(file_path, "wb") as buffer:
+                buffer.write(file_content)
+            
+            uploaded_files.append({
+                "original_filename": file.filename,
+                "stored_filename": unique_filename,
+                "file_path": file_path,
+                "file_size": len(file_content),
+                "content_type": file.content_type,
+                "upload_date": datetime.utcnow()
+            })
+        
+        return {
+            "message": f"{len(uploaded_files)} files uploaded successfully",
+            "files": uploaded_files
+        }
+        
+    except Exception as e:
+        logger.error(f"Error uploading files: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload files"
+        )
+
+# Add this endpoint to serve uploaded files
+@router.get("/files/{filename}")
+async def get_transaction_file(
+    filename: str,
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        user_id = str(current_user["_id"])
+        
+        # Security check: ensure filename starts with user_id
+        if not filename.startswith(user_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+        
+        file_path = os.path.join(UPLOAD_DIR, filename)
+        
+        if not os.path.exists(file_path):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File not found"
+            )
+        
+        return FileResponse(
+            path=file_path,
+            filename=filename.split('_', 2)[-1]  # Return original filename
+        )
+        
+    except Exception as e:
+        logger.error(f"Error serving file: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to serve file"
+        )
+
 
 @router.post("/", response_model=dict)
 async def create_transaction(
@@ -54,7 +162,7 @@ async def create_transaction(
             "from_account_id": transaction.from_account_id,
             "to_account_id": transaction.to_account_id,
             "detail": transaction.detail,
-            "document_record": transaction.document_record,
+            "document_files": transaction.document_files or [],  # Changed from document_record
             "user_id": user_id,
             "transaction_date": transaction.transaction_date or datetime.utcnow(),
             "created_at": datetime.utcnow(),
@@ -72,7 +180,7 @@ async def create_transaction(
             "from_account_id": transaction.from_account_id,
             "to_account_id": transaction.to_account_id,
             "detail": transaction.detail,
-            "document_record": transaction.document_record,
+            "document_files": transaction_doc["document_files"],  # Changed from document_record
             "user_id": user_id,
             "transaction_date": transaction_doc["transaction_date"],
             "created_at": transaction_doc["created_at"],
@@ -163,18 +271,19 @@ async def create_multiple_transactions(
         for doc in fetched_docs_cursor:
             # Ensure all potential ObjectIds are strings
             serialized_doc = {
-                "_id": str(doc["_id"]), # Convert _id to string
+                "_id": str(doc["_id"]),
                 "type": doc["type"],
                 "amount": doc["amount"],
                 "from_account_id": doc.get("from_account_id"),
                 "to_account_id": doc.get("to_account_id"),
                 "detail": doc["detail"],
-                "document_record": doc.get("document_record"),
-                "user_id": doc["user_id"], # Already a string
-                "transaction_date": doc["transaction_date"], # Should be datetime, Pydantic handles this
+                "document_files": doc.get("document_files", []),  # Changed from document_record
+                "user_id": doc["user_id"],
+                "transaction_date": doc["transaction_date"],
                 "created_at": doc["created_at"],
                 "updated_at": doc["updated_at"]
             }
+
             response_transactions_data.append(serialized_doc)
             
         # Sort the response to match the order of insertion if necessary,
@@ -254,7 +363,7 @@ async def get_transactions(
                 "from_account_id": transaction.get("from_account_id"),
                 "to_account_id": transaction.get("to_account_id"),
                 "detail": transaction["detail"],
-                "document_record": transaction.get("document_record"),
+                "document_files": transaction.get("document_files", []),  # Changed from document_record
                 "user_id": transaction["user_id"],
                 "transaction_date": transaction["transaction_date"],
                 "created_at": transaction["created_at"],
@@ -262,7 +371,7 @@ async def get_transactions(
             })
         
         return {
-            "transactions": transactions,
+            "transactions": transactions,  # Fixed: Return the list of transactions
             "count": len(transactions),
             "total": total_count,
             "limit": limit,
@@ -356,6 +465,8 @@ async def update_transaction(
                 detail="Transaction not found"
             )
         
+        
+        
         # Build update document
         update_doc = {"updated_at": datetime.utcnow()}
         
@@ -397,7 +508,8 @@ async def update_transaction(
             update_doc["document_record"] = transaction_update.document_record
         if transaction_update.transaction_date is not None:
             update_doc["transaction_date"] = transaction_update.transaction_date
-        
+        if transaction_update.document_files is not None:
+            update_doc["document_files"] = transaction_update.document_files
         # Update transaction
         result = transactions_collection.update_one(
             {"_id": obj_id, "user_id": user_id},
@@ -422,7 +534,7 @@ async def update_transaction(
                 "from_account_id": updated_transaction.get("from_account_id"),
                 "to_account_id": updated_transaction.get("to_account_id"),
                 "detail": updated_transaction["detail"],
-                "document_record": updated_transaction.get("document_record"),
+                "document_files": updated_transaction.get("document_files", []),  # Changed from document_record
                 "user_id": updated_transaction["user_id"],
                 "transaction_date": updated_transaction["transaction_date"],
                 "created_at": updated_transaction["created_at"],

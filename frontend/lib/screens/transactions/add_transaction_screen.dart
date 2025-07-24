@@ -1,4 +1,9 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:frontend/services/transaction_service.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../providers/transaction_provider.dart';
 import '../../providers/account_provider.dart';
@@ -62,76 +67,101 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     }
   }
 
+  
   Future<void> _submitTransactions() async {
-    if (_formKey.currentState!.validate()) {
-      final transactionProvider = Provider.of<TransactionProvider>(context, listen: false);
+  if (_formKey.currentState!.validate()) {
+    final transactionProvider = Provider.of<TransactionProvider>(context, listen: false);
 
-      // Validate that each transaction has proper account selection
-      for (int i = 0; i < _transactions.length; i++) {
-        final transaction = _transactions[i];
-        if (transaction.type == TransactionTypes.inflow && transaction.toAccountId == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Please select a "To" account for transaction ${i + 1}'),
-              backgroundColor: Colors.red,
-            ),
-          );
-          return;
-        }
-        if (transaction.type == TransactionTypes.outflow && transaction.fromAccountId == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Please select a "From" account for transaction ${i + 1}'),
-              backgroundColor: Colors.red,
-            ),
-          );
-          return;
-        }
-      }
-
-      final transactionRequests = _transactions.map((transaction) =>
-          CreateTransactionRequest(
-            type: transaction.type,
-            amount: double.parse(transaction.amountController.text),
-            fromAccountId: transaction.fromAccountId,
-            toAccountId: transaction.toAccountId,
-            detail: transaction.detailController.text.trim(),
-            documentRecord: transaction.documentController.text.trim().isEmpty
-                ? null
-                : transaction.documentController.text.trim(),
-            transactionDate: transaction.transactionDate,
-          )).toList();
-
-      bool success;
-      if (transactionRequests.length == 1) {
-        final request = transactionRequests.first;
-        success = await transactionProvider.createTransaction(
-          type: request.type,
-          amount: request.amount,
-          fromAccountId: request.fromAccountId,
-          toAccountId: request.toAccountId,
-          detail: request.detail,
-          documentRecord: request.documentRecord,
-          transactionDate: request.transactionDate,
-        );
-      } else {
-        success = await transactionProvider.createMultipleTransactions(
-          transactions: transactionRequests,
-        );
-      }
-
-      if (success) {
-        Navigator.of(context).pop(true);
-      } else {
+    // Validate that each transaction has proper account selection
+    for (int i = 0; i < _transactions.length; i++) {
+      final transaction = _transactions[i];
+      if (transaction.type == TransactionTypes.inflow && transaction.toAccountId == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(transactionProvider.errorMessage),
+            content: Text('Please select a "To" account for transaction ${i + 1}'),
             backgroundColor: Colors.red,
           ),
         );
+        return;
+      }
+      if (transaction.type == TransactionTypes.outflow && transaction.fromAccountId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Please select a "From" account for transaction ${i + 1}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
       }
     }
+
+    // Upload files and create transactions
+    final List<CreateTransactionRequest> transactionRequests = [];
+    
+    for (final transaction in _transactions) {
+      List<String>? uploadedFilePaths;
+      
+      // Upload files if any are selected
+      if (transaction.selectedFiles.isNotEmpty) {
+        final uploadResult = await TransactionService.uploadTransactionFiles(
+          files: transaction.selectedFiles,
+        );
+        
+        if (uploadResult['success']) {
+          uploadedFilePaths = List<String>.from(uploadResult['file_paths']);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to upload files: ${uploadResult['message']}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+      }
+      
+      transactionRequests.add(CreateTransactionRequest(
+        type: transaction.type,
+        amount: double.parse(transaction.amountController.text),
+        fromAccountId: transaction.fromAccountId,
+        toAccountId: transaction.toAccountId,
+        detail: transaction.detailController.text.trim(),
+        documentFiles: uploadedFilePaths,  // Changed from documentRecord
+        transactionDate: transaction.transactionDate,
+      ));
+    }
+
+    bool success;
+    if (transactionRequests.length == 1) {
+      final request = transactionRequests.first;
+      success = await transactionProvider.createTransaction(
+        type: request.type,
+        amount: request.amount,
+        fromAccountId: request.fromAccountId,
+        toAccountId: request.toAccountId,
+        detail: request.detail,
+        documentFiles: request.documentFiles,  // Changed from documentRecord
+        transactionDate: request.transactionDate,
+      );
+    } else {
+      success = await transactionProvider.createMultipleTransactions(
+        transactions: transactionRequests,
+      );
+    }
+
+    if (success) {
+      Navigator.of(context).pop(true);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(transactionProvider.errorMessage),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
+}
+
 
   @override
   Widget build(BuildContext context) {
@@ -301,7 +331,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
 class TransactionFormData {
   final TextEditingController amountController;
   final TextEditingController detailController;
-  final TextEditingController documentController;
+  List<File> selectedFiles;  // Replace documentController with this
   String type;
   String? fromAccountId;
   String? toAccountId;
@@ -310,14 +340,13 @@ class TransactionFormData {
   TransactionFormData()
       : amountController = TextEditingController(),
         detailController = TextEditingController(),
-        documentController = TextEditingController(),
-        type = TransactionTypes.inflow, // Default to Inflow
+        selectedFiles = [],  // Initialize empty list
+        type = TransactionTypes.inflow,
         transactionDate = DateTime.now();
 
   void dispose() {
     amountController.dispose();
     detailController.dispose();
-    documentController.dispose();
   }
 }
 
@@ -342,6 +371,87 @@ class TransactionFormCard extends StatefulWidget {
 }
 
 class _TransactionFormCardState extends State<TransactionFormCard> {
+
+
+  Future<void> _pickImageFromCamera() async {
+  try {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(
+      source: ImageSource.camera,
+      maxWidth: 1920,
+      maxHeight: 1080,
+      imageQuality: 85,
+    );
+    
+    if (image != null) {
+      setState(() {
+        widget.transaction.selectedFiles.add(File(image.path));
+      });
+    }
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Error taking photo: $e'),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+}
+
+Future<void> _pickImageFromGallery() async {
+  try {
+    final ImagePicker picker = ImagePicker();
+    final List<XFile> images = await picker.pickMultiImage(
+      maxWidth: 1920,
+      maxHeight: 1080,
+      imageQuality: 85,
+    );
+    
+    if (images.isNotEmpty) {
+      setState(() {
+        for (final image in images) {
+          widget.transaction.selectedFiles.add(File(image.path));
+        }
+      });
+    }
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Error picking images: $e'),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+}
+
+Future<void> _pickFiles() async {
+  try {
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'doc', 'docx', 'txt', 'jpg', 'jpeg', 'png', 'gif'],
+    );
+
+    if (result != null) {
+      setState(() {
+        for (final file in result.files) {
+          if (file.path != null) {
+            widget.transaction.selectedFiles.add(File(file.path!));
+          }
+        }
+      });
+    }
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Error picking files: $e'),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+}
+
+
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -509,13 +619,170 @@ class _TransactionFormCardState extends State<TransactionFormCard> {
             const SizedBox(height: 16),
 
             // Document Record TextFormField (Optional)
-            TextFormField(
-              controller: widget.transaction.documentController,
-              decoration: const InputDecoration(
-                labelText: 'Document Record (Optional)',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.attachment),
-                hintText: 'Reference number, receipt ID, etc.',
+            Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.attach_file, color: Colors.grey),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Documents & Images',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const Spacer(),
+                      PopupMenuButton<String>(
+                        onSelected: (value) async {
+                          if (value == 'camera') {
+                            await _pickImageFromCamera();
+                          } else if (value == 'gallery') {
+                            await _pickImageFromGallery();
+                          } else if (value == 'files') {
+                            await _pickFiles();
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: 'camera',
+                            child: Row(
+                              children: [
+                                Icon(Icons.camera_alt),
+                                SizedBox(width: 8),
+                                Text('Take Photo'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'gallery',
+                            child: Row(
+                              children: [
+                                Icon(Icons.photo_library),
+                                SizedBox(width: 8),
+                                Text('Choose from Gallery'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'files',
+                            child: Row(
+                              children: [
+                                Icon(Icons.folder),
+                                SizedBox(width: 8),
+                                Text('Choose Files'),
+                              ],
+                            ),
+                          ),
+                        ],
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: Colors.blue.shade200),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.add, size: 16, color: Colors.blue.shade700),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Add',
+                                style: TextStyle(color: Colors.blue.shade700),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (widget.transaction.selectedFiles.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: Colors.grey.shade200, style: BorderStyle.solid),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.info_outline, color: Colors.grey, size: 16),
+                          SizedBox(width: 8),
+                          Text(
+                            'No files selected',
+                            style: TextStyle(color: Colors.grey, fontSize: 14),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    ...widget.transaction.selectedFiles.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final file = entry.value;
+                      final fileName = file.path.split('/').last;
+                      final isImage = ['jpg', 'jpeg', 'png', 'gif'].contains(
+                        fileName.split('.').last.toLowerCase(),
+                      );
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.blue.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              isImage ? Icons.image : Icons.insert_drive_file,
+                              color: Colors.blue.shade700,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    fileName,
+                                    style: const TextStyle(fontSize: 14),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    '${(file.lengthSync() / 1024).toStringAsFixed(1)} KB',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () {
+                                setState(() {
+                                  widget.transaction.selectedFiles.removeAt(index);
+                                });
+                              },
+                              icon: const Icon(Icons.close, size: 18),
+                              constraints: const BoxConstraints(),
+                              padding: EdgeInsets.zero,
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                ],
               ),
             ),
             const SizedBox(height: 16),

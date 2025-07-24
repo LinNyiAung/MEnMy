@@ -476,6 +476,54 @@ class TransactionCard extends StatelessWidget {
     required this.onEdit, // Add this parameter
   }) : super(key: key);
 
+
+  void _showFilesDialog(BuildContext context, List<String> filePaths) {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Attached Files'),
+      content: Container(
+        width: double.maxFinite,
+        constraints: const BoxConstraints(maxHeight: 300),
+        child: ListView.builder(
+          shrinkWrap: true,
+          itemCount: filePaths.length,
+          itemBuilder: (context, index) {
+            final filePath = filePaths[index];
+            final fileName = filePath.split('_').last; // Extract original filename
+            final isImage = ['jpg', 'jpeg', 'png', 'gif'].contains(
+              fileName.split('.').last.toLowerCase(),
+            );
+
+            return ListTile(
+              leading: Icon(
+                isImage ? Icons.image : Icons.insert_drive_file,
+                color: Colors.blue.shade700,
+              ),
+              title: Text(fileName),
+              subtitle: Text('Tap to download'),
+              onTap: () {
+                // You can implement file download/viewing here
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('File download feature coming soon'),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+      ],
+    ),
+  );
+}
+
   @override
   Widget build(BuildContext context) {
     final isInflow = transaction.type == TransactionTypes.inflow;
@@ -649,17 +697,28 @@ class TransactionCard extends StatelessWidget {
                         color: Colors.grey,
                       ),
                     ),
-                    if (transaction.documentRecord != null) ...[
+                    if (transaction.documentFiles != null && transaction.documentFiles!.isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.attachment, size: 12, color: Colors.grey),
+                          Icon(Icons.attach_file, size: 12, color: Colors.grey.shade600),
                           const SizedBox(width: 4),
                           Text(
-                            transaction.documentRecord!,
-                            style: const TextStyle(fontSize: 11, color: Colors.grey),
-                            overflow: TextOverflow.ellipsis,
+                            '${transaction.documentFiles!.length} file${transaction.documentFiles!.length > 1 ? 's' : ''}',
+                            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                          ),
+                          const SizedBox(width: 4),
+                          GestureDetector(
+                            onTap: () => _showFilesDialog(context, transaction.documentFiles!),
+                            child: Text(
+                              'View',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.blue.shade600,
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
                           ),
                         ],
                       ),

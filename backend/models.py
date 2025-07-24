@@ -59,6 +59,13 @@ class AccountResponse(BaseModel):
     updated_at: datetime
 
 
+class FileUploadResponse(BaseModel):
+    filename: str
+    file_path: str
+    file_size: int
+    content_type: str
+    upload_date: datetime
+
 class TransactionType(str, Enum):
     INFLOW = "Inflow"
     OUTFLOW = "Outflow"
@@ -69,7 +76,7 @@ class TransactionCreate(BaseModel):
     from_account_id: Optional[str] = None
     to_account_id: Optional[str] = None
     detail: str
-    document_record: Optional[str] = None
+    document_files: Optional[List[str]] = None  # Store file paths instead of document_record
     transaction_date: Optional[datetime] = None
 
     @validator('amount')
@@ -86,12 +93,10 @@ class TransactionCreate(BaseModel):
 
     @validator('from_account_id', 'to_account_id')
     def validate_accounts(cls, v, values):
-        # For outflow transactions, from_account_id is required
         if values.get('type') == TransactionType.OUTFLOW:
             if not values.get('from_account_id') and v is None:
                 raise ValueError('From account is required for outflow transactions')
         
-        # For inflow transactions, to_account_id is required
         if values.get('type') == TransactionType.INFLOW:
             if not values.get('to_account_id') and v is None:
                 raise ValueError('To account is required for inflow transactions')
@@ -115,7 +120,7 @@ class TransactionUpdate(BaseModel):
     from_account_id: Optional[str] = None
     to_account_id: Optional[str] = None
     detail: Optional[str] = None
-    document_record: Optional[str] = None
+    document_files: Optional[List[str]] = None  # Store file paths instead of document_record
     transaction_date: Optional[datetime] = None
 
     @validator('amount')
@@ -131,7 +136,7 @@ class TransactionResponse(BaseModel):
     from_account_id: Optional[str] = None
     to_account_id: Optional[str] = None
     detail: str
-    document_record: Optional[str] = None
+    document_files: Optional[List[str]] = None  # Store file paths instead of document_record
     user_id: str
     transaction_date: datetime
     created_at: datetime

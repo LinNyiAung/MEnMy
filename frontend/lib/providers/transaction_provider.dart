@@ -19,37 +19,37 @@ class TransactionProvider with ChangeNotifier {
   }
 
   Future<bool> createTransaction({
-    required String type,
-    required double amount,
-    String? fromAccountId,
-    String? toAccountId,
-    required String detail,
-    String? documentRecord,
-    DateTime? transactionDate,
-  }) async {
-    _setLoading(true);
-    _errorMessage = '';
+  required String type,
+  required double amount,
+  String? fromAccountId,
+  String? toAccountId,
+  required String detail,
+  List<String>? documentFiles,  // Changed from documentRecord
+  DateTime? transactionDate,
+}) async {
+  _setLoading(true);
+  _errorMessage = '';
 
-    final result = await TransactionService.createTransaction(
-      type: type,
-      amount: amount,
-      fromAccountId: fromAccountId,
-      toAccountId: toAccountId,
-      detail: detail,
-      documentRecord: documentRecord,
-      transactionDate: transactionDate,
-    );
+  final result = await TransactionService.createTransaction(
+    type: type,
+    amount: amount,
+    fromAccountId: fromAccountId,
+    toAccountId: toAccountId,
+    detail: detail,
+    documentFiles: documentFiles,  // Changed from documentRecord
+    transactionDate: transactionDate,
+  );
 
-    if (result['success']) {
-      await loadTransactions(); // Reload transactions after creation
-      _setLoading(false);
-      return true;
-    } else {
-      _errorMessage = result['message'];
-      _setLoading(false);
-      return false;
-    }
+  if (result['success']) {
+    await loadTransactions(); // Reload transactions after creation
+    _setLoading(false);
+    return true;
+  } else {
+    _errorMessage = result['message'];
+    _setLoading(false);
+    return false;
   }
+}
 
   Future<bool> createMultipleTransactions({
     required List<CreateTransactionRequest> transactions,
@@ -100,45 +100,45 @@ class TransactionProvider with ChangeNotifier {
 
 
     Future<bool> updateTransaction({
-    required String transactionId,
-    required String type,
-    required double amount,
-    String? fromAccountId,
-    String? toAccountId,
-    required String detail,
-    String? documentRecord,
-    DateTime? transactionDate,
-  }) async {
-    _setLoading(true);
-    _errorMessage = '';
+  required String transactionId,
+  required String type,
+  required double amount,
+  String? fromAccountId,
+  String? toAccountId,
+  required String detail,
+  List<String>? documentFiles,  // Changed from documentRecord
+  DateTime? transactionDate,
+}) async {
+  _setLoading(true);
+  _errorMessage = '';
 
-    final result = await TransactionService.updateTransaction(
-      transactionId: transactionId,
-      type: type,
-      amount: amount,
-      fromAccountId: fromAccountId,
-      toAccountId: toAccountId,
-      detail: detail,
-      documentRecord: documentRecord,
-      transactionDate: transactionDate,
-    );
+  final result = await TransactionService.updateTransaction(
+    transactionId: transactionId,
+    type: type,
+    amount: amount,
+    fromAccountId: fromAccountId,
+    toAccountId: toAccountId,
+    detail: detail,
+    documentFiles: documentFiles,  // Changed from documentRecord
+    transactionDate: transactionDate,
+  );
 
-    if (result['success']) {
-      // Update the transaction in the local list
-      final updatedTransaction = result['transaction'] as Transaction;
-      final index = _transactions.indexWhere((t) => t.id == transactionId);
-      if (index != -1) {
-        _transactions[index] = updatedTransaction;
-        notifyListeners();
-      }
-      _setLoading(false);
-      return true;
-    } else {
-      _errorMessage = result['message'];
-      _setLoading(false);
-      return false;
+  if (result['success']) {
+    // Update the transaction in the local list
+    final updatedTransaction = result['transaction'] as Transaction;
+    final index = _transactions.indexWhere((t) => t.id == transactionId);
+    if (index != -1) {
+      _transactions[index] = updatedTransaction;
+      notifyListeners();
     }
+    _setLoading(false);
+    return true;
+  } else {
+    _errorMessage = result['message'];
+    _setLoading(false);
+    return false;
   }
+}
 
   Future<bool> deleteTransaction(String transactionId) async {
     _setLoading(true);

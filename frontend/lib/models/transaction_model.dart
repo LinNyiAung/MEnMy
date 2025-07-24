@@ -1,4 +1,3 @@
-// models/transaction_model.dart
 class Transaction {
   final String id;
   final String type;
@@ -6,7 +5,7 @@ class Transaction {
   final String? fromAccountId;
   final String? toAccountId;
   final String detail;
-  final String? documentRecord;
+  final List<String>? documentFiles;  // Changed from documentRecord
   final String userId;
   final DateTime transactionDate;
   final DateTime createdAt;
@@ -19,7 +18,7 @@ class Transaction {
     this.fromAccountId,
     this.toAccountId,
     required this.detail,
-    this.documentRecord,
+    this.documentFiles,  // Changed from documentRecord
     required this.userId,
     required this.transactionDate,
     required this.createdAt,
@@ -28,17 +27,16 @@ class Transaction {
 
   factory Transaction.fromJson(Map<String, dynamic> json) {
     return Transaction(
-      // Explicitly handle potential nulls for String fields that should be non-null
-      // Fallbacks are provided, but ideally, the backend should ensure these are never null.
       id: json['id'] as String? ?? 'N/A',
-      type: json['type'] as String? ?? TransactionTypes.inflow, // Default type as fallback
+      type: json['type'] as String? ?? TransactionTypes.inflow,
       amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
-      fromAccountId: json['from_account_id'] as String?, // Optional, can be null
-      toAccountId: json['to_account_id'] as String?,   // Optional, can be null
+      fromAccountId: json['from_account_id'] as String?,
+      toAccountId: json['to_account_id'] as String?,
       detail: json['detail'] as String? ?? 'No details provided',
-      documentRecord: json['document_record'] as String?, // Optional, can be null
+      documentFiles: json['document_files'] != null 
+          ? List<String>.from(json['document_files'] as List)
+          : null,  // Changed from documentRecord
       userId: json['user_id'] as String? ?? 'N/A',
-      // DateTime parsing is already good if the format is consistent ISO8601
       transactionDate: DateTime.parse(json['transaction_date'] as String),
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
@@ -53,7 +51,7 @@ class Transaction {
       'from_account_id': fromAccountId,
       'to_account_id': toAccountId,
       'detail': detail,
-      'document_record': documentRecord,
+      'document_files': documentFiles,  // Changed from document_record
       'user_id': userId,
       'transaction_date': transactionDate.toIso8601String(),
       'created_at': createdAt.toIso8601String(),
@@ -68,7 +66,7 @@ class CreateTransactionRequest {
   final String? fromAccountId;
   final String? toAccountId;
   final String detail;
-  final String? documentRecord;
+  final List<String>? documentFiles;  // Changed from documentRecord
   final DateTime? transactionDate;
 
   CreateTransactionRequest({
@@ -77,7 +75,7 @@ class CreateTransactionRequest {
     this.fromAccountId,
     this.toAccountId,
     required this.detail,
-    this.documentRecord,
+    this.documentFiles,  // Changed from documentRecord
     this.transactionDate,
   });
 
@@ -88,7 +86,7 @@ class CreateTransactionRequest {
       'from_account_id': fromAccountId,
       'to_account_id': toAccountId,
       'detail': detail,
-      'document_record': documentRecord,
+      'document_files': documentFiles,  // Changed from document_record
       'transaction_date': (transactionDate ?? DateTime.now()).toIso8601String(),
     };
   }
@@ -115,7 +113,7 @@ class UpdateTransactionRequest {
   final String? fromAccountId;
   final String? toAccountId;
   final String? detail;
-  final String? documentRecord;
+  final List<String>? documentFiles;  // Changed from documentRecord
   final DateTime? transactionDate;
 
   UpdateTransactionRequest({
@@ -124,7 +122,7 @@ class UpdateTransactionRequest {
     this.fromAccountId,
     this.toAccountId,
     this.detail,
-    this.documentRecord,
+    this.documentFiles,  // Changed from documentRecord
     this.transactionDate,
   });
 
@@ -135,7 +133,7 @@ class UpdateTransactionRequest {
     if (fromAccountId != null) map['from_account_id'] = fromAccountId;
     if (toAccountId != null) map['to_account_id'] = toAccountId;
     if (detail != null) map['detail'] = detail;
-    if (documentRecord != null) map['document_record'] = documentRecord;
+    if (documentFiles != null) map['document_files'] = documentFiles;  // Changed from document_record
     if (transactionDate != null) map['transaction_date'] = transactionDate!.toIso8601String();
     return map;
   }

@@ -3,62 +3,119 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/transaction_model.dart';
 import 'auth_service.dart';
+import 'dart:io';
+import 'package:http_parser/http_parser.dart';
+import 'package:mime/mime.dart';
 
 class TransactionService {
   static const String baseUrl = 'http://10.80.21.130:8000'; // Ensure this is correct
 
   static Future<Map<String, dynamic>> createTransaction({
-    required String type,
-    required double amount,
-    String? fromAccountId,
-    String? toAccountId,
-    required String detail,
-    String? documentRecord,
-    DateTime? transactionDate,
-  }) async {
-    try {
-      final token = await AuthService.getToken();
-      if (token == null) {
-        return {'success': false, 'message': 'No authentication token found'};
-      }
-
-      final transaction = CreateTransactionRequest(
-        type: type,
-        amount: amount,
-        fromAccountId: fromAccountId,
-        toAccountId: toAccountId,
-        detail: detail,
-        documentRecord: documentRecord,
-        transactionDate: transactionDate,
-      );
-
-      final response = await http.post(
-        Uri.parse('$baseUrl/transactions/'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: json.encode(transaction.toJson()),
-      );
-
-      final responseData = json.decode(response.body);
-
-      if (response.statusCode == 200) {
-        return {
-          'success': true,
-          'transaction': Transaction.fromJson(responseData['transaction']),
-          'message': responseData['message'] as String? ?? 'Transaction created',
-        };
-      } else {
-        return {
-          'success': false,
-          'message': responseData['detail'] as String? ?? 'Failed to create transaction',
-        };
-      }
-    } catch (e) {
-      return {'success': false, 'message': 'Network error: $e'};
+  required String type,
+  required double amount,
+  String? fromAccountId,
+  String? toAccountId,
+  required String detail,
+  List<String>? documentFiles,  // Changed from documentRecord
+  DateTime? transactionDate,
+}) async {
+  try {
+    final token = await AuthService.getToken();
+    if (token == null) {
+      return {'success': false, 'message': 'No authentication token found'};
     }
+
+    final transaction = CreateTransactionRequest(
+      type: type,
+      amount: amount,
+      fromAccountId: fromAccountId,
+      toAccountId: toAccountId,
+      detail: detail,
+      documentFiles: documentFiles,  // Changed from documentRecord
+      transactionDate: transactionDate,
+    );
+
+    final response = await http.post(
+      Uri.parse('$baseUrl/transactions/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: json.encode(transaction.toJson()),
+    );
+
+    final responseData = json.decode(response.body);
+
+    if (response.statusCode == 200) {
+      return {
+        'success': true,
+        'transaction': Transaction.fromJson(responseData['transaction']),
+        'message': responseData['message'] as String? ?? 'Transaction created',
+      };
+    } else {
+      return {
+        'success': false,
+        'message': responseData['detail'] as String? ?? 'Failed to create transaction',
+      };
+    }
+  } catch (e) {
+    return {'success': false, 'message': 'Network error: $e'};
   }
+}
+
+
+  static Future<Map<String, dynamic>> uploadTransactionFiles({
+  required List<File> files,
+}) async {
+  try {
+    final token = await AuthService.getToken();
+    if (token == null) {
+      return {'success': false, 'message': 'No authentication token found'};
+    }
+
+    var request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/transactions/upload-files'),
+    );
+
+    request.headers['Authorization'] = 'Bearer $token';
+
+    // Add files to request
+    for (File file in files) {
+      final mimeType = lookupMimeType(file.path);
+      final multipartFile = await http.MultipartFile.fromPath(
+        'files',
+        file.path,
+        contentType: mimeType != null ? MediaType.parse(mimeType) : null,
+      );
+      request.files.add(multipartFile);
+    }
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+    final responseData = json.decode(response.body);
+
+    if (response.statusCode == 200) {
+      final List<dynamic> filesData = responseData['files'] ?? [];
+      final List<String> filePaths = filesData
+          .map((fileData) => fileData['stored_filename'] as String)
+          .toList();
+
+      return {
+        'success': true,
+        'file_paths': filePaths,
+        'message': responseData['message'] as String? ?? 'Files uploaded successfully',
+      };
+    } else {
+      return {
+        'success': false,
+        'message': responseData['detail'] as String? ?? 'Failed to upload files',
+      };
+    }
+  } catch (e) {
+    return {'success': false, 'message': 'Network error: $e'};
+  }
+}
 
   static Future<Map<String, dynamic>> createMultipleTransactions({
     required List<CreateTransactionRequest> transactions,
@@ -177,58 +234,58 @@ class TransactionService {
 
 
     static Future<Map<String, dynamic>> updateTransaction({
-    required String transactionId,
-    required String type,
-    required double amount,
-    String? fromAccountId,
-    String? toAccountId,
-    required String detail,
-    String? documentRecord,
-    DateTime? transactionDate,
-  }) async {
-    try {
-      final token = await AuthService.getToken();
-      if (token == null) {
-        return {'success': false, 'message': 'No authentication token found'};
-      }
-
-      final updateRequest = UpdateTransactionRequest(
-        type: type,
-        amount: amount,
-        fromAccountId: fromAccountId,
-        toAccountId: toAccountId,
-        detail: detail,
-        documentRecord: documentRecord,
-        transactionDate: transactionDate,
-      );
-
-      final response = await http.put(
-        Uri.parse('$baseUrl/transactions/$transactionId'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: json.encode(updateRequest.toJson()),
-      );
-
-      final responseData = json.decode(response.body);
-
-      if (response.statusCode == 200) {
-        return {
-          'success': true,
-          'transaction': Transaction.fromJson(responseData['transaction']),
-          'message': responseData['message'] as String? ?? 'Transaction updated',
-        };
-      } else {
-        return {
-          'success': false,
-          'message': responseData['detail'] as String? ?? 'Failed to update transaction',
-        };
-      }
-    } catch (e) {
-      return {'success': false, 'message': 'Network error: $e'};
+  required String transactionId,
+  required String type,
+  required double amount,
+  String? fromAccountId,
+  String? toAccountId,
+  required String detail,
+  List<String>? documentFiles,  // Changed from documentRecord
+  DateTime? transactionDate,
+}) async {
+  try {
+    final token = await AuthService.getToken();
+    if (token == null) {
+      return {'success': false, 'message': 'No authentication token found'};
     }
+
+    final updateRequest = UpdateTransactionRequest(
+      type: type,
+      amount: amount,
+      fromAccountId: fromAccountId,
+      toAccountId: toAccountId,
+      detail: detail,
+      documentFiles: documentFiles,  // Changed from documentRecord
+      transactionDate: transactionDate,
+    );
+
+    final response = await http.put(
+      Uri.parse('$baseUrl/transactions/$transactionId'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: json.encode(updateRequest.toJson()),
+    );
+
+    final responseData = json.decode(response.body);
+
+    if (response.statusCode == 200) {
+      return {
+        'success': true,
+        'transaction': Transaction.fromJson(responseData['transaction']),
+        'message': responseData['message'] as String? ?? 'Transaction updated',
+      };
+    } else {
+      return {
+        'success': false,
+        'message': responseData['detail'] as String? ?? 'Failed to update transaction',
+      };
+    }
+  } catch (e) {
+    return {'success': false, 'message': 'Network error: $e'};
   }
+}
 
   static Future<Map<String, dynamic>> deleteTransaction(String transactionId) async {
     try {
