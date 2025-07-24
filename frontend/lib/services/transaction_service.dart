@@ -12,6 +12,68 @@ import 'package:mime/mime.dart';
 class TransactionService {
   static const String baseUrl = 'http://10.80.21.130:8000';
 
+  static Future<void> downloadFileToPath(String url, String path, {String? authToken}) async {
+  try {
+    final response = await http.get(
+      Uri.parse(url),
+      headers: authToken != null ? {
+        'Authorization': 'Bearer $authToken',
+      } : {},
+    );
+
+    if (response.statusCode == 200) {
+      final file = File(path);
+      await file.writeAsBytes(response.bodyBytes);
+    } else {
+      throw Exception('Failed to download file: HTTP ${response.statusCode}');
+    }
+  } catch (e) {
+    throw Exception('Failed to download file: $e');
+  }
+}
+
+// Also add this helper method for better caching
+static Future<String> downloadFileToCache(String filename, {String? authToken}) async {
+  try {
+    final token = authToken ?? await AuthService.getToken();
+    if (token == null) {
+      throw Exception('No authentication token found');
+    }
+
+    final directory = await getTemporaryDirectory();
+    final fileName = filename.split('_').last; // Extract original filename
+    final filePath = '${directory.path}/$fileName';
+    final file = File(filePath);
+
+    // Check if file already exists in cache
+    if (await file.exists()) {
+      // Check if file is recent (less than 1 hour old)
+      final fileStat = await file.stat();
+      final now = DateTime.now();
+      final fileAge = now.difference(fileStat.modified);
+      
+      if (fileAge.inHours < 1) {
+        return filePath; // Return cached file if it's recent
+      }
+    }
+
+    // Download the file
+    final response = await http.get(
+      Uri.parse('$baseUrl/transactions/files/$filename'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    if (response.statusCode == 200) {
+      await file.writeAsBytes(response.bodyBytes);
+      return filePath;
+    } else {
+      throw Exception('Failed to download file: HTTP ${response.statusCode}');
+    }
+  } catch (e) {
+    throw Exception('Failed to download file to cache: $e');
+  }
+}
+
   static Future<Map<String, dynamic>> createTransaction({
     required String type,
     required double amount,

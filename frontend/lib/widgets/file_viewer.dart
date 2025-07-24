@@ -1,19 +1,20 @@
 // widgets/file_viewer.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/transaction_service.dart';
 
 class FileViewer extends StatefulWidget {
   final List<String> filePaths;
   final int initialIndex;
-  final String? authToken; // Add auth token parameter
+  final String? authToken;
 
   const FileViewer({
     Key? key,
     required this.filePaths,
     this.initialIndex = 0,
-    this.authToken, // Add this parameter
+    this.authToken,
   }) : super(key: key);
 
   @override
@@ -56,197 +57,220 @@ class _FileViewerState extends State<FileViewer> {
     return _getFileExtension(filename) == 'pdf';
   }
 
-  Future<void> _downloadFile(String filePath) async {
-  setState(() {
-    _isLoading = true;
-    _message = 'Downloading...';
-  });
-
-  // Show download options dialog first
-  final downloadOption = await showDialog<String>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Download Options'),
-      content: const Text('Choose where to save the file:'),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop('app'),
-          child: const Text('App Folder (Recommended)'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(context).pop('downloads'),
-          child: const Text('Downloads Folder'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(null),
-          child: const Text('Cancel'),
-        ),
-      ],
-    ),
-  );
-
-  if (downloadOption == null) {
-    setState(() {
-      _isLoading = false;
-      _message = '';
-    });
-    return;
+  bool _isTextFile(String filename) {
+    return _getFileExtension(filename) == 'txt';
   }
 
-  Map<String, dynamic> result;
-  
-  if (downloadOption == 'app') {
-    // Download to app-specific folder (no permission required)
-    result = await TransactionService.downloadTransactionFile(
-      filename: filePath,
-      customFileName: _getFileName(filePath),
-    );
-  } else {
-    // Download to public Downloads folder (requires permission)
-    result = await TransactionService.downloadToPublicDownloads(
-      filename: filePath,
-      customFileName: _getFileName(filePath),
-    );
-  }
-
-  setState(() {
-    _isLoading = false;
-    _message = result['message'];
-  });
-
-  if (mounted) {
-    if (result['success']) {
-      final directoryType = result['directory_type'] ?? 'unknown';
-      String locationMessage;
-      
-      switch (directoryType) {
-        case 'app_external':
-          locationMessage = 'Downloaded to app storage folder';
-          break;
-        case 'app_documents':
-          locationMessage = 'Downloaded to app documents folder';
-          break;
-        case 'public_downloads':
-          locationMessage = 'Downloaded to Downloads folder';
-          break;
-        default:
-          locationMessage = 'Downloaded successfully';
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(locationMessage),
-              Text(
-                'Path: ${result['file_path']}',
-                style: const TextStyle(fontSize: 12, color: Colors.white70),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 4),
-          action: SnackBarAction(
-            label: 'Open Folder',
-            onPressed: () => _openFileLocation(result['file_path']),
-          ),
-        ),
+  // Helper method to get a local PDF path for viewing
+  Future<String> _getLocalPdfPath(String filePath) async {
+    try {
+      return await TransactionService.downloadFileToCache(
+        filePath,
+        authToken: widget.authToken,
       );
-    } else {
-      Color snackBarColor = Colors.red;
-      String actionLabel = 'Retry';
-      VoidCallback? actionCallback = () => _downloadFile(filePath);
-
-      // Handle permission denied case
-      if (result['permission_denied'] == true) {
-        actionLabel = 'Try App Folder';
-        actionCallback = () async {
-          final appResult = await TransactionService.downloadTransactionFile(
-            filename: filePath,
-            customFileName: _getFileName(filePath),
-          );
-          
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(appResult['message']),
-                backgroundColor: appResult['success'] ? Colors.green : Colors.red,
-              ),
-            );
-          }
-        };
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result['message']),
-          backgroundColor: snackBarColor,
-          duration: const Duration(seconds: 4),
-          action: SnackBarAction(
-            label: actionLabel,
-            onPressed: actionCallback,
-          ),
-        ),
-      );
+    } catch (e) {
+      throw Exception('Failed to get PDF file: $e');
     }
   }
-}
 
-  Future<void> _openFileLocation(String filePath) async {
-  try {
-    if (Platform.isAndroid) {
-      // Try to open file manager
-      final uri = Uri.parse('content://com.android.externalstorage.documents/document/primary:Download');
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        // Alternative: try to open the file directly
-        final fileUri = Uri.file(filePath);
-        if (await canLaunchUrl(fileUri)) {
-          await launchUrl(fileUri, mode: LaunchMode.externalApplication);
-        } else {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Cannot open file location. File saved successfully.'),
-              ),
-            );
-          }
+  // Helper method to get text content
+  Future<String> _getTextContent(String filePath) async {
+    try {
+      final localPath = await TransactionService.downloadFileToCache(
+        filePath,
+        authToken: widget.authToken,
+      );
+      final file = File(localPath);
+      return await file.readAsString();
+    } catch (e) {
+      throw Exception('Failed to read text file: $e');
+    }
+  }
+
+  // Your existing download and other methods remain the same...
+  Future<void> _downloadFile(String filePath) async {
+    setState(() {
+      _isLoading = true;
+      _message = 'Downloading...';
+    });
+
+    final downloadOption = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Download Options'),
+        content: const Text('Choose where to save the file:'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('app'),
+            child: const Text('App Folder (Recommended)'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('downloads'),
+            child: const Text('Downloads Folder'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(null),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (downloadOption == null) {
+      setState(() {
+        _isLoading = false;
+        _message = '';
+      });
+      return;
+    }
+
+    Map<String, dynamic> result;
+    
+    if (downloadOption == 'app') {
+      result = await TransactionService.downloadTransactionFile(
+        filename: filePath,
+        customFileName: _getFileName(filePath),
+      );
+    } else {
+      result = await TransactionService.downloadToPublicDownloads(
+        filename: filePath,
+        customFileName: _getFileName(filePath),
+      );
+    }
+
+    setState(() {
+      _isLoading = false;
+      _message = result['message'];
+    });
+
+    if (mounted) {
+      if (result['success']) {
+        final directoryType = result['directory_type'] ?? 'unknown';
+        String locationMessage;
+        
+        switch (directoryType) {
+          case 'app_external':
+            locationMessage = 'Downloaded to app storage folder';
+            break;
+          case 'app_documents':
+            locationMessage = 'Downloaded to app documents folder';
+            break;
+          case 'public_downloads':
+            locationMessage = 'Downloaded to Downloads folder';
+            break;
+          default:
+            locationMessage = 'Downloaded successfully';
         }
-      }
-    } else if (Platform.isIOS) {
-      if (mounted) {
+
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('File saved to app documents directory'),
+          SnackBar(
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(locationMessage),
+                Text(
+                  'Path: ${result['file_path']}',
+                  style: const TextStyle(fontSize: 12, color: Colors.white70),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'Open Folder',
+              onPressed: () => _openFileLocation(result['file_path']),
+            ),
+          ),
+        );
+      } else {
+        Color snackBarColor = Colors.red;
+        String actionLabel = 'Retry';
+        VoidCallback? actionCallback = () => _downloadFile(filePath);
+
+        if (result['permission_denied'] == true) {
+          actionLabel = 'Try App Folder';
+          actionCallback = () async {
+            final appResult = await TransactionService.downloadTransactionFile(
+              filename: filePath,
+              customFileName: _getFileName(filePath),
+            );
+            
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(appResult['message']),
+                  backgroundColor: appResult['success'] ? Colors.green : Colors.red,
+                ),
+              );
+            }
+          };
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message']),
+            backgroundColor: snackBarColor,
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: actionLabel,
+              onPressed: actionCallback,
+            ),
           ),
         );
       }
     }
-  } catch (e) {
-    print('Error opening file location: $e');
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('File downloaded successfully but cannot open location'),
-        ),
-      );
+  }
+
+  Future<void> _openFileLocation(String filePath) async {
+    try {
+      if (Platform.isAndroid) {
+        final uri = Uri.parse('content://com.android.externalstorage.documents/document/primary:Download');
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } else {
+          final fileUri = Uri.file(filePath);
+          if (await canLaunchUrl(fileUri)) {
+            await launchUrl(fileUri, mode: LaunchMode.externalApplication);
+          } else {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Cannot open file location. File saved successfully.'),
+                ),
+              );
+            }
+          }
+        }
+      } else if (Platform.isIOS) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('File saved to app documents directory'),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('Error opening file location: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('File downloaded successfully but cannot open location'),
+          ),
+        );
+      }
     }
   }
-}
 
   Future<void> _shareFile(String filePath) async {
     try {
-      // Download the file first
       final result = await TransactionService.downloadTransactionFile(
         filename: filePath,
         customFileName: _getFileName(filePath),
       );
 
       if (result['success']) {
-        // You can implement sharing functionality here using share_plus package
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -257,6 +281,127 @@ class _FileViewerState extends State<FileViewer> {
       }
     } catch (e) {
       print('Error sharing file: $e');
+    }
+  }
+
+  // Helper method to build filename header (NEW)
+  Widget _buildFileNameHeader(String fileName) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade900.withOpacity(0.8),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade700),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            _getFileTypeIcon(fileName),
+            color: _getFileTypeColor(fileName),
+            size: 20,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  fileName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _getFileExtension(fileName).toUpperCase(),
+                  style: TextStyle(
+                    color: Colors.grey.shade400,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper method to get file type icon
+  IconData _getFileTypeIcon(String fileName) {
+    final extension = _getFileExtension(fileName);
+    switch (extension) {
+      case 'pdf':
+        return Icons.picture_as_pdf;
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+      case 'webp':
+      case 'bmp':
+        return Icons.image;
+      case 'doc':
+      case 'docx':
+        return Icons.description;
+      case 'txt':
+        return Icons.text_snippet;
+      case 'xls':
+      case 'xlsx':
+        return Icons.table_chart;
+      case 'zip':
+      case 'rar':
+        return Icons.archive;
+      case 'mp3':
+      case 'wav':
+        return Icons.audiotrack;
+      case 'mp4':
+      case 'avi':
+        return Icons.videocam;
+      default:
+        return Icons.insert_drive_file;
+    }
+  }
+
+  // Helper method to get file type color
+  Color _getFileTypeColor(String fileName) {
+    final extension = _getFileExtension(fileName);
+    switch (extension) {
+      case 'pdf':
+        return Colors.red;
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+      case 'webp':
+      case 'bmp':
+        return Colors.blue;
+      case 'doc':
+      case 'docx':
+        return Colors.blue;
+      case 'txt':
+        return Colors.grey;
+      case 'xls':
+      case 'xlsx':
+        return Colors.green;
+      case 'zip':
+      case 'rar':
+        return Colors.orange;
+      case 'mp3':
+      case 'wav':
+        return Colors.purple;
+      case 'mp4':
+      case 'avi':
+        return Colors.red;
+      default:
+        return Colors.grey;
     }
   }
 
@@ -289,7 +434,7 @@ class _FileViewerState extends State<FileViewer> {
               } else if (value == 'open_external') {
                 _openInExternalApp();
               } else if (value == 'refresh') {
-                setState(() {}); // Simple refresh by rebuilding
+                setState(() {});
               }
             },
             itemBuilder: (context) => [
@@ -341,26 +486,17 @@ class _FileViewerState extends State<FileViewer> {
               final filePath = widget.filePaths[index];
               final fileName = _getFileName(filePath);
 
-              return Container(
+              return Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (_isImageFile(fileName))
-                      _buildImageViewer(filePath)
-                    else if (_isPdfFile(fileName))
-                      _buildPdfViewer(filePath)
-                    else
-                      _buildGenericFileViewer(fileName),
-                    const SizedBox(height: 20),
-                    Text(
-                      fileName,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      textAlign: TextAlign.center,
+                    // ALWAYS show filename header at the top
+                    _buildFileNameHeader(fileName),
+                    
+                    // File content viewer
+                    Expanded(
+                      child: _buildFileContent(filePath, fileName),
                     ),
                   ],
                 ),
@@ -426,214 +562,304 @@ class _FileViewerState extends State<FileViewer> {
     );
   }
 
+  // NEW: Centralized file content builder
+  Widget _buildFileContent(String filePath, String fileName) {
+    if (_isImageFile(fileName)) {
+      return _buildImageViewer(filePath);
+    } else if (_isPdfFile(fileName)) {
+      return _buildPdfViewer(filePath);
+    } else if (_isTextFile(fileName)) {
+      return _buildTextViewer(filePath);
+    } else {
+      return _buildGenericFileViewer(fileName);
+    }
+  }
+
   Widget _buildImageViewer(String filePath) {
     final imageUrl = TransactionService.getFileUrl(filePath);
     
-    return Expanded(
-      child: InteractiveViewer(
-        minScale: 0.5,
-        maxScale: 3.0,
-        child: Image.network(
-          imageUrl,
-          headers: widget.authToken != null ? {
-            'Authorization': 'Bearer ${widget.authToken}',
-          } : {},
-          fit: BoxFit.contain,
-          loadingBuilder: (context, child, loadingProgress) {
-            if (loadingProgress == null) return child;
-            return Center(
-              child: CircularProgressIndicator(
-                value: loadingProgress.expectedTotalBytes != null
-                    ? loadingProgress.cumulativeBytesLoaded /
-                        loadingProgress.expectedTotalBytes!
-                    : null,
-                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-              ),
-            );
-          },
-          errorBuilder: (context, error, stackTrace) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.error_outline,
-                    color: Colors.white,
-                    size: 64,
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Failed to load image',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Error: ${error.toString()}',
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    onPressed: () => setState(() {}), // Retry loading
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Retry'),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
+    return InteractiveViewer(
+      minScale: 0.5,
+      maxScale: 3.0,
+      child: Image.network(
+        imageUrl,
+        headers: widget.authToken != null ? {
+          'Authorization': 'Bearer ${widget.authToken}',
+        } : {},
+        fit: BoxFit.contain,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return Center(
+            child: CircularProgressIndicator(
+              value: loadingProgress.expectedTotalBytes != null
+                  ? loadingProgress.cumulativeBytesLoaded /
+                      loadingProgress.expectedTotalBytes!
+                  : null,
+              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  color: Colors.white,
+                  size: 64,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Failed to load image',
+                  style: TextStyle(color: Colors.white),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Error: ${error.toString()}',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: () => setState(() {}),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Retry'),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
 
+  // UPDATED: Removed duplicate filename display since it's now in the header
   Widget _buildPdfViewer(String filePath) {
-    final fileName = _getFileName(filePath);
-    
-    return Expanded(
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.picture_as_pdf,
-              size: 80,
-              color: Colors.red,
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'PDF Document',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              fileName,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 14,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 30),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+    return FutureBuilder<String>(
+      future: _getLocalPdfPath(filePath),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                ElevatedButton.icon(
-                  onPressed: () => _downloadFile(filePath),
-                  icon: const Icon(Icons.download),
-                  label: const Text('Download'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                  ),
+                CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
-                ElevatedButton.icon(
-                  onPressed: () => _openInExternalApp(),
-                  icon: const Icon(Icons.open_in_new),
-                  label: const Text('Open in Browser'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    foregroundColor: Colors.white,
-                  ),
+                SizedBox(height: 16),
+                Text(
+                  'Loading PDF...',
+                  style: TextStyle(color: Colors.white),
                 ),
               ],
             ),
-          ],
-        ),
-      ),
+          );
+        } else if (snapshot.hasError || !snapshot.hasData) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  color: Colors.white,
+                  size: 64,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Failed to load PDF',
+                  style: TextStyle(color: Colors.white),
+                ),
+                if (snapshot.hasError) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Error: ${snapshot.error}',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: () => setState(() {}),
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Retry'),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: () => _openInExternalApp(),
+                      icon: const Icon(Icons.open_in_new),
+                      label: const Text('Open in Browser'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        } else {
+          final localPath = snapshot.data!;
+          return PDFView(
+            filePath: localPath,
+            enableSwipe: true,
+            swipeHorizontal: false,
+            autoSpacing: true,
+            pageFling: true,
+            pageSnap: true,
+            defaultPage: 0,
+            fitPolicy: FitPolicy.BOTH,
+            preventLinkNavigation: false,
+            onError: (error) {
+              print('Error rendering PDF: $error');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error loading PDF: $error'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            onPageError: (page, error) {
+              print('Page $page Error: $error');
+            },
+            onRender: (pages) {
+              print("Rendered $pages pages.");
+            },
+            onViewCreated: (PDFViewController pdfViewController) {
+              // You can store this controller if you need to control the PDF programmatically
+            },
+            onLinkHandler: (String? uri) {
+              print('goto uri: $uri');
+            },
+            onPageChanged: (int? page, int? total) {
+              print('page change: $page/$total');
+            },
+          );
+        }
+      },
+    );
+  }
+
+  // UPDATED: Removed duplicate filename display
+  Widget _buildTextViewer(String filePath) {
+    return FutureBuilder<String>(
+      future: _getTextContent(filePath),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+          );
+        } else if (snapshot.hasError || !snapshot.hasData) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  color: Colors.white,
+                  size: 64,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Failed to load text file',
+                  style: TextStyle(color: Colors.white),
+                ),
+                if (snapshot.hasError) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Error: ${snapshot.error}',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: () => setState(() {}),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Retry'),
+                ),
+              ],
+            ),
+          );
+        } else {
+          final textContent = snapshot.data!;
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade900,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: SingleChildScrollView(
+              child: SelectableText(
+                textContent,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontFamily: 'Courier',
+                  fontSize: 14,
+                  height: 1.5,
+                ),
+              ),
+            ),
+          );
+        }
+      },
     );
   }
 
   Widget _buildGenericFileViewer(String fileName) {
     final extension = _getFileExtension(fileName);
-    IconData icon;
-    Color color;
-
-    switch (extension) {
-      case 'doc':
-      case 'docx':
-        icon = Icons.description;
-        color = Colors.blue;
-        break;
-      case 'txt':
-        icon = Icons.text_snippet;
-        color = Colors.grey;
-        break;
-      case 'xls':
-      case 'xlsx':
-        icon = Icons.table_chart;
-        color = Colors.green;
-        break;
-      case 'zip':
-      case 'rar':
-        icon = Icons.archive;
-        color = Colors.orange;
-        break;
-      case 'mp3':
-      case 'wav':
-        icon = Icons.audiotrack;
-        color = Colors.purple;
-        break;
-      case 'mp4':
-      case 'avi':
-        icon = Icons.videocam;
-        color = Colors.red;
-        break;
-      default:
-        icon = Icons.insert_drive_file;
-        color = Colors.grey;
-    }
-
-    return Expanded(
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 80,
-              color: color,
+    
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            _getFileTypeIcon(fileName),
+            size: 80,
+            color: _getFileTypeColor(fileName),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'Preview not available',
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 16,
             ),
-            const SizedBox(height: 20),
-            Text(
-              extension.toUpperCase(),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'This ${extension.toUpperCase()} file cannot be previewed directly.',
+            style: const TextStyle(
+              color: Colors.white60,
+              fontSize: 14,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 30),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              ElevatedButton.icon(
+                onPressed: () => _downloadFile(widget.filePaths[_currentIndex]),
+                icon: const Icon(Icons.download),
+                label: const Text('Download'),
               ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              fileName,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 14,
+              ElevatedButton.icon(
+                onPressed: () => _openInExternalApp(),
+                icon: const Icon(Icons.open_in_new),
+                label: const Text('Open in Browser'),
               ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 30),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                ElevatedButton.icon(
-                  onPressed: () => _downloadFile(widget.filePaths[_currentIndex]),
-                  icon: const Icon(Icons.download),
-                  label: const Text('Download'),
-                ),
-                ElevatedButton.icon(
-                  onPressed: () => _openInExternalApp(),
-                  icon: const Icon(Icons.open_in_new),
-                  label: const Text('Open'),
-                ),
-              ],
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ),
     );
   }
