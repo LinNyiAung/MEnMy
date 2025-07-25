@@ -525,18 +525,20 @@ async def update_transaction(
             update_doc["to_account_id"] = transaction_update.to_account_id
         
         # Update other fields
+        # Update other fields
         if transaction_update.type is not None:
             update_doc["type"] = transaction_update.type.value
         if transaction_update.amount is not None:
             update_doc["amount"] = transaction_update.amount
         if transaction_update.detail is not None:
             update_doc["detail"] = transaction_update.detail
-        if transaction_update.document_record is not None:
-            update_doc["document_record"] = transaction_update.document_record
-        if transaction_update.transaction_date is not None:
-            update_doc["transaction_date"] = transaction_update.transaction_date
         if transaction_update.document_files is not None:
             update_doc["document_files"] = transaction_update.document_files
+        if transaction_update.transaction_date is not None:
+            update_doc["transaction_date"] = transaction_update.transaction_date
+
+
+
         # Update transaction
         result = transactions_collection.update_one(
             {"_id": obj_id, "user_id": user_id},
