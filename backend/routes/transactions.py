@@ -26,6 +26,33 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
+def cleanup_transaction_files(document_files: List[str]) -> dict:
+    """
+    Helper function to clean up files associated with a transaction.
+    Returns a dictionary with deletion results.
+    """
+    deleted_files = []
+    failed_files = []
+    
+    for filename in document_files:
+        if filename:  # Check if filename is not empty
+            file_path = os.path.join(UPLOAD_DIR, filename)
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    deleted_files.append(filename)
+                    logger.info(f"Deleted file: {filename}")
+                else:
+                    logger.warning(f"File not found for deletion: {filename}")
+                    failed_files.append(f"{filename} (not found)")
+            except Exception as file_error:
+                logger.error(f"Error deleting file {filename}: {str(file_error)}")
+                failed_files.append(f"{filename} (deletion error)")
+    
+    return {
+        "deleted_files": deleted_files,
+        "failed_files": failed_files
+    }
 
 @router.post("/upload-files", response_model=dict)
 async def upload_transaction_files(
@@ -238,7 +265,7 @@ async def create_multiple_transactions(
                 "from_account_id": transaction.from_account_id,
                 "to_account_id": transaction.to_account_id,
                 "detail": transaction.detail,
-                "document_record": transaction.document_record,
+                "document_files": transaction.document_files or [],
                 "user_id": user_id, # Ensure user_id is a string
                 "transaction_date": transaction.transaction_date or datetime.utcnow(),
                 "created_at": datetime.utcnow(),
@@ -420,7 +447,7 @@ async def get_transaction(
                 "from_account_id": transaction.get("from_account_id"),
                 "to_account_id": transaction.get("to_account_id"),
                 "detail": transaction["detail"],
-                "document_record": transaction.get("document_record"),
+                "document_files": transaction.get("document_files", []),
                 "user_id": transaction["user_id"],
                 "transaction_date": transaction["transaction_date"],
                 "created_at": transaction["created_at"],
@@ -569,7 +596,40 @@ async def delete_transaction(
                 detail="Invalid transaction ID"
             )
         
-        # Delete transaction
+        # First, get the transaction to access its files before deletion
+        transaction = transactions_collection.find_one({
+            "_id": obj_id,
+            "user_id": str(current_user["_id"])
+        })
+        
+        if not transaction:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Transaction not found"
+            )
+        
+        # Delete associated files from file system
+        document_files = transaction.get("document_files", [])
+        file_cleanup_result = cleanup_transaction_files(document_files)
+        deleted_files = file_cleanup_result["deleted_files"]
+        failed_files = file_cleanup_result["failed_files"]
+        
+        for filename in document_files:
+            if filename:  # Check if filename is not empty
+                file_path = os.path.join(UPLOAD_DIR, filename)
+                try:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        deleted_files.append(filename)
+                        logger.info(f"Deleted file: {filename}")
+                    else:
+                        logger.warning(f"File not found for deletion: {filename}")
+                        failed_files.append(f"{filename} (not found)")
+                except Exception as file_error:
+                    logger.error(f"Error deleting file {filename}: {str(file_error)}")
+                    failed_files.append(f"{filename} (deletion error)")
+        
+        # Delete transaction from database
         result = transactions_collection.delete_one({
             "_id": obj_id,
             "user_id": str(current_user["_id"])
@@ -581,8 +641,26 @@ async def delete_transaction(
                 detail="Transaction not found"
             )
         
-        return {"message": "Transaction deleted successfully"}
+        # Prepare response message
+        message = "Transaction deleted successfully"
+        if deleted_files:
+            message += f". {len(deleted_files)} file(s) removed"
+        if failed_files:
+            message += f". Warning: {len(failed_files)} file(s) could not be removed"
         
+        response = {"message": message}
+        
+        # Add details about file operations if any files were involved
+        if deleted_files or failed_files:
+            response["file_operations"] = {
+                "deleted_files": deleted_files,
+                "failed_files": failed_files
+            }
+        
+        return response
+        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error deleting transaction: {str(e)}")
         raise HTTPException(
