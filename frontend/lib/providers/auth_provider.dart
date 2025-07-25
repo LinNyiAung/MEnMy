@@ -6,17 +6,48 @@ class AuthProvider with ChangeNotifier {
   User? _user;
   String? _token;
   bool _isLoading = false;
+  bool _isInitialized = false; // Add this to track initialization
   String _errorMessage = '';
 
   User? get user => _user;
   String? get token => _token;
   bool get isLoading => _isLoading;
+  bool get isInitialized => _isInitialized; // Getter for initialization state
   String get errorMessage => _errorMessage;
   bool get isLoggedIn => _user != null && _token != null;
 
   void _setLoading(bool loading) {
     _isLoading = loading;
     notifyListeners();
+  }
+
+  // Add method to initialize auth state on app startup
+  Future<void> initializeAuth() async {
+    if (_isInitialized) return; // Prevent multiple initializations
+
+    _setLoading(true);
+
+    try {
+      final token = await AuthService.getToken();
+      if (token != null) {
+        // Token exists, verify it's still valid by getting user info
+        final result = await AuthService.getCurrentUser();
+        if (result['success']) {
+          _user = result['user'];
+          _token = token;
+        } else {
+          // Token is invalid, clear it
+          await AuthService.logout();
+        }
+      }
+    } catch (e) {
+      print('Error initializing auth: $e');
+      // If there's an error, clear any stored data
+      await AuthService.logout();
+    }
+
+    _isInitialized = true;
+    _setLoading(false);
   }
 
   Future<bool> signUp({
@@ -76,15 +107,25 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  // Update checkAuthStatus to be more robust
   Future<void> checkAuthStatus() async {
-    final isLoggedIn = await AuthService.isLoggedIn();
-    if (!isLoggedIn) {
+    final token = await AuthService.getToken();
+    if (token == null) {
       _user = null;
       _token = null;
       notifyListeners();
     } else {
-      // If still logged in, try to get the current token
-      _token = await AuthService.getToken();
+      // Verify token is still valid
+      final result = await AuthService.getCurrentUser();
+      if (result['success']) {
+        _user = result['user'];
+        _token = token;
+      } else {
+        // Token is invalid, clear it
+        await AuthService.logout();
+        _user = null;
+        _token = null;
+      }
       notifyListeners();
     }
   }

@@ -2,7 +2,7 @@ import os
 from fastapi import APIRouter, HTTPException, status, Depends
 from datetime import timedelta
 from models import UserSignUp, UserSignIn, UserResponse, Token
-from auth_utils import (  # Changed from 'auth' to 'auth_utils'
+from auth_utils import (
     get_password_hash, 
     verify_password, 
     create_access_token, 
@@ -36,7 +36,7 @@ async def sign_up(user: UserSignUp):
     
     result = users_collection.insert_one(user_doc)
     
-    # Create access token
+    # Create access token with longer expiration for persistent login
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.email}, expires_delta=access_token_expires
@@ -65,9 +65,6 @@ async def sign_in(user: UserSignIn):
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Debug: Print the user document structure (remove this in production)
-    print(f"Debug - User document keys: {list(db_user.keys())}")
-    
     # Check for hashed_password field
     if "hashed_password" not in db_user:
         raise HTTPException(
@@ -83,7 +80,7 @@ async def sign_in(user: UserSignIn):
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Create access token
+    # Create access token with longer expiration for persistent login
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.email}, expires_delta=access_token_expires
@@ -101,12 +98,22 @@ async def sign_in(user: UserSignIn):
 
 @router.get("/me", response_model=dict)
 async def get_current_user_info(current_user: dict = Depends(get_current_user)):
-    return {
-        "id": str(current_user["_id"]),
-        "full_name": current_user["full_name"],
-        "email": current_user["email"],
-        "created_at": current_user["created_at"]
-    }
+    """
+    Get current user information using the provided JWT token.
+    This endpoint is used to verify if the token is still valid and get user data.
+    """
+    try:
+        return {
+            "id": str(current_user["_id"]),
+            "full_name": current_user["full_name"],
+            "email": current_user["email"],
+            "created_at": current_user.get("created_at")
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving user information: {str(e)}"
+        )
 
 # Debug endpoint to check user structure (remove in production)
 @router.get("/debug/user/{email}")
