@@ -87,8 +87,8 @@ class TransactionCreate(BaseModel):
 
     @validator('detail')
     def validate_detail(cls, v):
-        if not v or len(v.strip()) < 3:
-            raise ValueError('Detail must be at least 3 characters long')
+        if not v or len(v.strip()) < 0:
+            raise ValueError('Detail can\'t be empty')
         return v.strip()
 
     @validator('from_account_id', 'to_account_id')

@@ -117,9 +117,40 @@ static Future<String> downloadFileToCache(String filename, {String? authToken}) 
           'message': responseData['message'] as String? ?? 'Transaction created',
         };
       } else {
+        // Handle different error response formats
+        String errorMessage = 'Failed to create transaction';
+
+        if (responseData['detail'] != null) {
+          if (responseData['detail'] is List) {
+            // Handle validation errors (422 status)
+            List<dynamic> errors = responseData['detail'] as List;
+            List<String> errorMessages = [];
+
+            for (var error in errors) {
+              if (error is Map<String, dynamic>) {
+                String fieldError = '';
+                if (error['loc'] != null && error['loc'] is List && error['loc'].isNotEmpty) {
+                  String field = error['loc'].last.toString();
+                  fieldError = '$field: ';
+                }
+                if (error['msg'] != null) {
+                  fieldError += error['msg'].toString();
+                }
+                errorMessages.add(fieldError);
+              } else {
+                errorMessages.add(error.toString());
+              }
+            }
+            errorMessage = errorMessages.join(', ');
+          } else if (responseData['detail'] is String) {
+            // Handle simple string errors
+            errorMessage = responseData['detail'] as String;
+          }
+        }
+
         return {
           'success': false,
-          'message': responseData['detail'] as String? ?? 'Failed to create transaction',
+          'message': errorMessage,
         };
       }
     } catch (e) {
@@ -390,7 +421,7 @@ static Future<String> downloadFileToCache(String filename, {String? authToken}) 
   }
 
   // ... rest of your existing methods remain the same ...
-  
+
   static Future<Map<String, dynamic>> createMultipleTransactions({
     required List<CreateTransactionRequest> transactions,
   }) async {
@@ -411,9 +442,9 @@ static Future<String> downloadFileToCache(String filename, {String? authToken}) 
         body: json.encode(request.toJson()),
       );
 
-      if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
+      final responseData = json.decode(response.body);
 
+      if (response.statusCode == 200) {
         final List<dynamic> transactionsData = responseData['transactions'] ?? [];
         final List<Transaction> createdTransactions = transactionsData
             .map((transactionJson) {
@@ -433,10 +464,40 @@ static Future<String> downloadFileToCache(String filename, {String? authToken}) 
           'message': responseData['message'] as String? ?? 'Multiple transactions created',
         };
       } else {
-        final responseData = json.decode(response.body);
+        // Handle different error response formats
+        String errorMessage = 'Failed to create transactions';
+
+        if (responseData['detail'] != null) {
+          if (responseData['detail'] is List) {
+            // Handle validation errors (422 status)
+            List<dynamic> errors = responseData['detail'] as List;
+            List<String> errorMessages = [];
+
+            for (var error in errors) {
+              if (error is Map<String, dynamic>) {
+                String fieldError = '';
+                if (error['loc'] != null && error['loc'] is List && error['loc'].isNotEmpty) {
+                  String field = error['loc'].last.toString();
+                  fieldError = '$field: ';
+                }
+                if (error['msg'] != null) {
+                  fieldError += error['msg'].toString();
+                }
+                errorMessages.add(fieldError);
+              } else {
+                errorMessages.add(error.toString());
+              }
+            }
+            errorMessage = errorMessages.join(', ');
+          } else if (responseData['detail'] is String) {
+            // Handle simple string errors
+            errorMessage = responseData['detail'] as String;
+          }
+        }
+
         return {
           'success': false,
-          'message': responseData['detail'] as String? ?? 'Failed to create transactions',
+          'message': errorMessage,
         };
       }
     } catch (e) {
@@ -548,9 +609,40 @@ static Future<String> downloadFileToCache(String filename, {String? authToken}) 
           'message': responseData['message'] as String? ?? 'Transaction updated',
         };
       } else {
+        // Handle different error response formats
+        String errorMessage = 'Failed to update transaction';
+
+        if (responseData['detail'] != null) {
+          if (responseData['detail'] is List) {
+            // Handle validation errors (422 status)
+            List<dynamic> errors = responseData['detail'] as List;
+            List<String> errorMessages = [];
+
+            for (var error in errors) {
+              if (error is Map<String, dynamic>) {
+                String fieldError = '';
+                if (error['loc'] != null && error['loc'] is List && error['loc'].isNotEmpty) {
+                  String field = error['loc'].last.toString();
+                  fieldError = '$field: ';
+                }
+                if (error['msg'] != null) {
+                  fieldError += error['msg'].toString();
+                }
+                errorMessages.add(fieldError);
+              } else {
+                errorMessages.add(error.toString());
+              }
+            }
+            errorMessage = errorMessages.join(', ');
+          } else if (responseData['detail'] is String) {
+            // Handle simple string errors
+            errorMessage = responseData['detail'] as String;
+          }
+        }
+
         return {
           'success': false,
-          'message': responseData['detail'] as String? ?? 'Failed to update transaction',
+          'message': errorMessage,
         };
       }
     } catch (e) {
