@@ -113,68 +113,71 @@ Future<void> _pickFiles() async {
   }
 
   Future<void> _saveTransaction() async {
-  if (_formKey.currentState!.validate()) {
-    final transactionProvider = Provider.of<TransactionProvider>(context, listen: false);
+    if (_formKey.currentState!.validate()) {
+      final transactionProvider = Provider.of<TransactionProvider>(context, listen: false);
 
-    // Re-validate account selection based on type
-    if (_selectedType == TransactionTypes.outflow && _selectedFromAccountId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a "From" account for outflow.'), backgroundColor: Colors.red),
-      );
-      return;
-    }
-    if (_selectedType == TransactionTypes.inflow && _selectedToAccountId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a "To" account for inflow.'), backgroundColor: Colors.red),
-      );
-      return;
-    }
-
-
-      List<String> allFilePaths = List.from(_existingFilePaths);
-    
-    if (_selectedFiles.isNotEmpty) {
-      final uploadResult = await TransactionService.uploadTransactionFiles(
-        files: _selectedFiles,
-      );
-      
-      if (uploadResult['success']) {
-        final newFilePaths = List<String>.from(uploadResult['file_paths']);
-        allFilePaths.addAll(newFilePaths);
-      } else {
+      // Re-validate account selection based on type
+      if (_selectedType == TransactionTypes.outflow && _selectedFromAccountId == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to upload files: ${uploadResult['message']}'),
-            backgroundColor: Colors.red,
-          ),
+          const SnackBar(content: Text('Please select a "From" account for outflow.'), backgroundColor: Colors.red),
         );
         return;
       }
-    }
+      if (_selectedType == TransactionTypes.inflow && _selectedToAccountId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select a "To" account for inflow.'), backgroundColor: Colors.red),
+        );
+        return;
+      }
 
-    final success = await transactionProvider.updateTransaction(
-      transactionId: widget.transaction.id,
-      type: _selectedType,
-      amount: double.parse(_amountController.text),
-      fromAccountId: _selectedFromAccountId,
-      toAccountId: _selectedToAccountId,
-      detail: _detailController.text.trim(),
-      documentFiles: allFilePaths.isEmpty ? null : allFilePaths,  // Changed from documentRecord
-      transactionDate: _selectedTransactionDate,
-    );
+      // Start with existing files
+      List<String> allFilePaths = List.from(_existingFilePaths);
 
-    if (success) {
-      Navigator.of(context).pop(true);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(transactionProvider.errorMessage),
-          backgroundColor: Colors.red,
-        ),
+      // Upload new files if any
+      if (_selectedFiles.isNotEmpty) {
+        final uploadResult = await TransactionService.uploadTransactionFiles(
+          files: _selectedFiles,
+        );
+
+        if (uploadResult['success']) {
+          final newFilePaths = List<String>.from(uploadResult['file_paths']);
+          allFilePaths.addAll(newFilePaths);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to upload files: ${uploadResult['message']}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+      }
+
+      // IMPORTANT: Always pass the file list, even if empty
+      // This tells the backend to update the document_files field
+      final success = await transactionProvider.updateTransaction(
+        transactionId: widget.transaction.id,
+        type: _selectedType,
+        amount: double.parse(_amountController.text),
+        fromAccountId: _selectedFromAccountId,
+        toAccountId: _selectedToAccountId,
+        detail: _detailController.text.trim(),
+        documentFiles: allFilePaths, // Remove the null check - always pass the list
+        transactionDate: _selectedTransactionDate,
       );
+
+      if (success) {
+        Navigator.of(context).pop(true);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(transactionProvider.errorMessage),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
-}
 
   @override
   Widget build(BuildContext context) {

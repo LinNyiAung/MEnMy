@@ -493,6 +493,14 @@ async def update_transaction(
             )
         
         
+        # Track files for cleanup if document_files is being updated
+        files_to_cleanup = []
+        if transaction_update.document_files is not None:
+            existing_files = existing_transaction.get("document_files", [])
+            new_files = transaction_update.document_files or []
+            
+            # Find files that are being removed
+            files_to_cleanup = [f for f in existing_files if f not in new_files]
         
         # Build update document
         update_doc = {"updated_at": datetime.utcnow()}
@@ -550,6 +558,14 @@ async def update_transaction(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Transaction not found"
             )
+        
+
+        # Clean up removed files from filesystem
+        if files_to_cleanup:
+            cleanup_result = cleanup_transaction_files(files_to_cleanup)
+            logger.info(f"Cleaned up {len(cleanup_result['deleted_files'])} files during transaction update")
+            if cleanup_result['failed_files']:
+                logger.warning(f"Failed to clean up some files: {cleanup_result['failed_files']}")
         
         # Get updated transaction
         updated_transaction = transactions_collection.find_one({"_id": obj_id})
